@@ -1,0 +1,361 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<title>SchoolRide Intelligent Safety System</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #0b1220;
+    --panel: #121b2e;
+    --panel-border: #223252;
+    --accent: #3b82f6;
+    --accent-2: #22d3ee;
+    --text: #e6edf7;
+    --muted: #8ea0c0;
+    --ok: #22c55e;
+    --danger: #ef4444;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: radial-gradient(circle at 20% 0%, #16213d 0%, var(--bg) 55%);
+    color: var(--text);
+    font-family: "Segoe UI", "Sarabun", sans-serif;
+    min-height: 100vh;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 32px;
+    background: linear-gradient(90deg, #0f1b34 0%, #12294f 100%);
+    border-bottom: 1px solid var(--panel-border);
+    box-shadow: 0 2px 12px rgba(0,0,0,0.35);
+  }
+  .brand { display: flex; align-items: center; gap: 14px; }
+  .brand .logo {
+    width: 44px; height: 44px; border-radius: 12px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px;
+  }
+  .brand h1 { font-size: 18px; margin: 0; letter-spacing: .3px; }
+  .brand p { margin: 2px 0 0; font-size: 12.5px; color: var(--muted); }
+  #clock { font-size: 14px; color: var(--muted); text-align: right; }
+  #clock b { display: block; font-size: 20px; color: var(--text); font-variant-numeric: tabular-nums; }
+
+  #alert-banner {
+    display: none;
+    margin: 14px 32px 0;
+    padding: 12px 18px;
+    border-radius: 10px;
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid var(--danger);
+    color: #fecaca;
+    font-weight: 600;
+    animation: pulse 1.4s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,.45); }
+    50% { box-shadow: 0 0 0 8px rgba(239,68,68,0); }
+  }
+
+  #overview {
+    margin: 20px 32px 0;
+    padding: 22px 28px;
+    border-radius: 16px;
+    background: linear-gradient(135deg, #12294f 0%, #0f1b34 100%);
+    border: 1px solid var(--panel-border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 18px;
+  }
+  #overview .total-block { display: flex; align-items: center; gap: 18px; }
+  #overview .total-number {
+    font-size: 54px;
+    font-weight: 800;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+    background: linear-gradient(135deg, var(--accent-2), var(--accent));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    transition: transform .15s ease;
+  }
+  #overview .total-number.bump { transform: scale(1.18); }
+  #overview .total-label { color: var(--muted); font-size: 13.5px; }
+  #overview .total-label b { display: block; color: var(--text); font-size: 15px; }
+  #overview .breakdown {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  #overview .breakdown .chip {
+    padding: 8px 14px;
+    border-radius: 10px;
+    background: rgba(255,255,255,.04);
+    border: 1px solid var(--panel-border);
+    font-size: 13px;
+    color: var(--muted);
+    text-align: center;
+    min-width: 120px;
+  }
+  #overview .breakdown .chip b { display: block; color: var(--text); font-size: 18px; }
+
+  main {
+    padding: 24px 32px 40px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+    gap: 20px;
+  }
+  .cam-card {
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 14px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    transition: border-color .2s, box-shadow .2s;
+  }
+  .cam-card.alert {
+    border-color: var(--danger);
+    box-shadow: 0 0 0 1px var(--danger), 0 0 22px rgba(239,68,68,.35);
+  }
+  .cam-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--panel-border);
+  }
+  .cam-head .name { font-weight: 600; font-size: 14px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+  .dot.online { background: var(--ok); box-shadow: 0 0 6px var(--ok); }
+  .dot.offline { background: #6b7280; }
+  .badge {
+    font-size: 11.5px;
+    padding: 3px 9px;
+    border-radius: 999px;
+    background: rgba(59,130,246,.15);
+    color: #93c5fd;
+    border: 1px solid rgba(59,130,246,.4);
+  }
+  .badge.danger {
+    background: rgba(239,68,68,.15);
+    color: #fecaca;
+    border-color: var(--danger);
+  }
+  .cam-body { position: relative; background: #000; aspect-ratio: 4 / 3; }
+  .cam-body img { width: 100%; height: 100%; object-fit: contain; display: block; }
+  .cam-foot {
+    padding: 8px 14px;
+    font-size: 12px;
+    color: var(--muted);
+    display: flex;
+    justify-content: space-between;
+  }
+
+  .people-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px 14px;
+    border-top: 1px solid var(--panel-border);
+    min-height: 44px;
+  }
+  .people-row .people-label { font-size: 12px; color: var(--muted); margin-right: 4px; white-space: nowrap; }
+  .people-icons { display: flex; flex-wrap: wrap; gap: 4px; }
+  .person-emoji {
+    font-size: 22px;
+    display: inline-block;
+    animation: popIn .35s ease;
+  }
+  .person-emoji.leaving {
+    animation: popOut .3s ease forwards;
+  }
+  @keyframes popIn {
+    0%   { transform: scale(0) translateY(6px); opacity: 0; }
+    60%  { transform: scale(1.25); opacity: 1; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+  @keyframes popOut {
+    0%   { transform: scale(1); opacity: 1; }
+    100% { transform: scale(0) translateY(6px); opacity: 0; }
+  }
+  footer {
+    text-align: center;
+    color: var(--muted);
+    font-size: 12px;
+    padding: 10px 0 24px;
+  }
+</style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <div class="logo">🚌</div>
+      <div>
+        <h1>SchoolRide Intelligent Safety System</h1>
+        <p>ระบบอัจฉริยะสำหรับเฝ้าระวังและแจ้งเตือนเด็กตกค้างบนรถรับส่งนักเรียน</p>
+      </div>
+    </div>
+    <div id="clock"><span id="date-line">-</span><b id="time-line">--:--:--</b></div>
+  </header>
+
+  <div id="alert-banner">⚠️ ตรวจพบบุคคลตกค้างในรถ กรุณาตรวจสอบทันที</div>
+
+  <div id="overview">
+    <div class="total-block">
+      <div class="total-number" id="total-number">0</div>
+      <div class="total-label">คนทั้งหมดบนรถ<br><b>ภาพรวมทุกกล้อง</b></div>
+    </div>
+    <div class="breakdown" id="breakdown"></div>
+  </div>
+
+  <main id="grid"></main>
+
+  <footer>SchoolRide Intelligent Safety System — เฝ้าระวังอัตโนมัติด้วย AI</footer>
+
+<script>
+const camNames = {{ cam_names | tojson }};
+const camLabels = {{ cam_display | tojson }};
+const grid = document.getElementById("grid");
+const breakdown = document.getElementById("breakdown");
+const prevCounts = {};
+let prevTotal = 0;
+
+function labelOf(name) {
+  return camLabels[name] || name;
+}
+
+camNames.forEach(name => {
+  prevCounts[name] = 0;
+
+  const card = document.createElement("div");
+  card.className = "cam-card";
+  card.id = "card-" + name;
+  card.innerHTML = `
+    <div class="cam-head">
+      <span class="name"><span class="dot offline" id="dot-${name}"></span>${labelOf(name)}</span>
+      <span class="badge" id="badge-${name}">กำลังเชื่อมต่อ...</span>
+    </div>
+    <div class="cam-body">
+      <img src="/video_feed/${name}" alt="${labelOf(name)}">
+    </div>
+    <div class="cam-foot">
+      <span id="foot-${name}">-</span>
+    </div>
+    <div class="people-row">
+      <span class="people-label" id="people-label-${name}">0 คน</span>
+      <div class="people-icons" id="people-icons-${name}"></div>
+    </div>
+  `;
+  grid.appendChild(card);
+
+  const chip = document.createElement("div");
+  chip.className = "chip";
+  chip.id = "chip-" + name;
+  chip.innerHTML = `${labelOf(name)}<b id="chip-count-${name}">0</b>`;
+  breakdown.appendChild(chip);
+});
+
+// ปรับจำนวนอิโมจิคนในการ์ดกล้อง ให้มีเอฟเฟคเด้งเข้า/จางออกตามจำนวนที่เปลี่ยน
+function syncPeopleIcons(name, count) {
+  const container = document.getElementById("people-icons-" + name);
+  const current = container.children.length;
+
+  if (count > current) {
+    for (let i = 0; i < count - current; i++) {
+      const span = document.createElement("span");
+      span.className = "person-emoji";
+      span.textContent = "🧍";
+      container.appendChild(span);
+    }
+  } else if (count < current) {
+    const toRemove = current - count;
+    for (let i = 0; i < toRemove; i++) {
+      const el = container.lastElementChild;
+      if (!el) break;
+      el.classList.add("leaving");
+      el.addEventListener("animationend", () => el.remove(), { once: true });
+    }
+  }
+}
+
+async function pollStatus() {
+  try {
+    const res = await fetch("/api/status");
+    const data = await res.json();
+    let anyAlert = false;
+    let total = 0;
+
+    if (data._server_time) {
+      document.getElementById("time-line").textContent = data._server_time.time;
+      document.getElementById("date-line").textContent = data._server_time.date;
+    }
+
+    camNames.forEach(name => {
+      const s = data[name];
+      if (!s) return;
+      const card = document.getElementById("card-" + name);
+      const dot = document.getElementById("dot-" + name);
+      const badge = document.getElementById("badge-" + name);
+      const foot = document.getElementById("foot-" + name);
+      const peopleLabel = document.getElementById("people-label-" + name);
+      const chipCount = document.getElementById("chip-count-" + name);
+
+      dot.className = "dot " + (s.online ? "online" : "offline");
+      card.classList.toggle("alert", !!s.alert);
+      if (s.alert) anyAlert = true;
+
+      const count = s.online ? s.person_count : 0;
+      total += count;
+
+      if (count !== prevCounts[name]) {
+        syncPeopleIcons(name, count);
+        prevCounts[name] = count;
+      }
+      peopleLabel.textContent = count + " คน";
+      chipCount.textContent = count;
+
+      if (!s.online) {
+        badge.textContent = "ออฟไลน์";
+        badge.className = "badge danger";
+        foot.textContent = "ไม่มีสัญญาณภาพ";
+      } else if (s.alert) {
+        badge.textContent = "⚠ พบคนตกค้าง";
+        badge.className = "badge danger";
+        foot.textContent = `ตรวจพบ ${s.person_count} คน`;
+      } else if (s.person_count > 0) {
+        badge.textContent = `พบ ${s.person_count} คน`;
+        badge.className = "badge";
+        foot.textContent = "กำลังเฝ้าระวัง";
+      } else {
+        badge.textContent = "ปกติ";
+        badge.className = "badge";
+        foot.textContent = "ไม่พบคนในรถ";
+      }
+    });
+
+    document.getElementById("alert-banner").style.display = anyAlert ? "block" : "none";
+
+    const totalEl = document.getElementById("total-number");
+    if (total !== prevTotal) {
+      totalEl.textContent = total;
+      totalEl.classList.remove("bump");
+      void totalEl.offsetWidth; // reflow เพื่อให้ animation รันซ้ำได้
+      totalEl.classList.add("bump");
+      prevTotal = total;
+    }
+  } catch (e) {
+    // เงียบไว้ รอบหน้าค่อยลองใหม่
+  }
+}
+setInterval(pollStatus, 1000);
+pollStatus();
+</script>
+</body>
+</html>
