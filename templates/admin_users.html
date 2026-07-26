@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<title>รายชื่อผู้สมัคร — SchoolRide Intelligent Safety System</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #0b1220;
+    --panel: #121b2e;
+    --panel-border: #223252;
+    --accent: #3b82f6;
+    --accent-2: #22d3ee;
+    --text: #e6edf7;
+    --muted: #8ea0c0;
+    --ok: #22c55e;
+    --danger: #ef4444;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: radial-gradient(circle at 20% 0%, #16213d 0%, var(--bg) 55%);
+    color: var(--text);
+    font-family: "Segoe UI", "Sarabun", sans-serif;
+    min-height: 100vh;
+  }
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 18px 32px; background: linear-gradient(90deg, #0f1b34 0%, #12294f 100%);
+    border-bottom: 1px solid var(--panel-border); box-shadow: 0 2px 12px rgba(0,0,0,0.35);
+    flex-wrap: wrap; gap: 12px;
+  }
+  .brand { display: flex; align-items: center; gap: 14px; }
+  .brand .logo {
+    width: 44px; height: 44px; border-radius: 12px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    display: flex; align-items: center; justify-content: center; font-size: 22px;
+  }
+  .brand h1 { font-size: 18px; margin: 0; }
+  .brand p { margin: 2px 0 0; font-size: 12.5px; color: var(--muted); }
+
+  .nav-links { display: flex; align-items: center; gap: 10px; }
+  .nav-links a {
+    font-size: 13px; color: var(--text); text-decoration: none;
+    padding: 8px 16px; border-radius: 8px; border: 1px solid var(--panel-border); background: var(--panel);
+  }
+  .nav-links a:hover { background: var(--panel-border); }
+
+  main { max-width: 900px; margin: 0 auto; padding: 28px 24px 60px; }
+  h2 { font-size: 16px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 13px; margin: 0 0 20px; }
+
+  .panel {
+    background: var(--panel); border: 1px solid var(--panel-border);
+    border-radius: 14px; overflow: hidden;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th, td { padding: 12px 16px; text-align: left; border-bottom: 1px solid var(--panel-border); }
+  th { color: var(--muted); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .03em; }
+  tr:last-child td { border-bottom: none; }
+
+  .role-badge {
+    display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11.5px; font-weight: 700;
+  }
+  .role-badge.admin { background: rgba(239,68,68,.15); color: #fecaca; border: 1px solid var(--danger); }
+  .role-badge.user { background: rgba(59,130,246,.15); color: #93c5fd; border: 1px solid var(--accent); }
+
+  .empty { padding: 30px; text-align: center; color: var(--muted); }
+</style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <div class="logo">👥</div>
+      <div>
+        <h1>รายชื่อผู้สมัคร / ผู้ใช้งานระบบ</h1>
+        <p>สำหรับผู้ดูแลระบบเท่านั้น</p>
+      </div>
+    </div>
+    <div class="nav-links">
+      <a href="{{ url_for('index') }}">← กลับหน้า Dashboard</a>
+      <a href="{{ url_for('logout') }}">ออกจากระบบ</a>
+    </div>
+  </header>
+
+  <main>
+    <h2>ผู้ใช้ทั้งหมด ({{ users|length }} คน)</h2>
+    <p class="sub">เรียงจากสมัครล่าสุดไปเก่าสุด</p>
+
+    <div class="panel">
+      {% if users %}
+      <table>
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>ชื่อผู้ใช้</th>
+            <th>สิทธิ์</th>
+            <th>สมัครเมื่อ</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for u in users %}
+          <tr>
+            <td>{{ u.id }}</td>
+            <td>{{ u.username }}</td>
+            <td><span class="role-badge {{ u.role }}">{{ "ผู้ดูแลระบบ" if u.role == "admin" else "ผู้ใช้งาน" }}</span></td>
+            <td>{{ u.created_at }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="empty">ยังไม่มีผู้ใช้ในระบบ</div>
+      {% endif %}
+    </div>
+  </main>
+</body>
+</html>

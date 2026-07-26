@@ -13,3 +13,6 @@ snapshots/
 
 # cloudflared binary (ดาวน์โหลดจาก github release โดยตรง ไม่ผ่านตัวติดตั้ง)
 cloudflared.exe
+
+# ฐานข้อมูลผู้ใช้ (มี password hash จริงของบัญชีที่สมัคร ไม่ควรอยู่ใน git)
+users.db

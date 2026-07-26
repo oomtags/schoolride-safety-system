@@ -45,6 +45,14 @@
   #clock { font-size: 14px; color: var(--muted); text-align: right; }
   #clock b { display: block; font-size: 20px; color: var(--text); font-variant-numeric: tabular-nums; }
 
+  .nav-links { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .nav-links a {
+    font-size: 12.5px; color: var(--text); text-decoration: none;
+    padding: 7px 14px; border-radius: 8px; border: 1px solid var(--panel-border); background: var(--panel);
+  }
+  .nav-links a:hover { background: var(--panel-border); }
+  .nav-links .nav-user { font-size: 12.5px; color: var(--muted); white-space: nowrap; }
+
   #alert-banner {
     display: none;
     margin: 14px 32px 0;
@@ -229,7 +237,17 @@
         <p>ระบบอัจฉริยะสำหรับเฝ้าระวังและแจ้งเตือนเด็กตกค้างบนรถรับส่งนักเรียน</p>
       </div>
     </div>
-    <div id="clock"><span id="date-line">-</span><b id="time-line">--:--:--</b></div>
+    <div style="display:flex; align-items:center; gap:16px; flex-wrap:wrap;">
+      <div id="clock"><span id="date-line">-</span><b id="time-line">--:--:--</b></div>
+      <div class="nav-links">
+        <a href="/monitor">SchoolRide Monitor</a>
+        {% if session.role == "admin" %}
+        <a href="/admin/users">ผู้ใช้งานระบบ</a>
+        {% endif %}
+        <span class="nav-user">👤 {{ session.username }}</span>
+        <a href="/logout">ออกจากระบบ</a>
+      </div>
+    </div>
   </header>
 
   <div id="alert-banner">⚠️ ตรวจพบบุคคลตกค้างในรถ กรุณาตรวจสอบทันที</div>

@@ -68,6 +68,15 @@
   .conn-pill[data-state="failed"] .conn-dot { background: var(--active); }
   @keyframes pulse { 0%,100% { opacity: 1;} 50% { opacity: 0.3;} }
 
+  .nav-links { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .nav-links a {
+    font-size: 12px; color: var(--ink); text-decoration: none;
+    padding: 7px 13px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel);
+    font-family: var(--mono);
+  }
+  .nav-links a:hover { background: var(--panel-2); }
+  .nav-links .nav-user { font-size: 12px; color: var(--ink-dim); font-family: var(--mono); white-space: nowrap; }
+
   .cams-section { margin-top: 26px; }
 
   /* ===== stat cards row (moved below the camera section) ===== */
@@ -283,9 +292,19 @@
         <p>ระบบเฝ้าระวังผู้โดยสารตกค้างบนรถรับส่งนักเรียน</p>
       </div>
     </div>
-    <div class="conn-pill" id="connPill" data-state="connecting">
-      <span class="conn-dot"></span>
-      <span id="connLabel">กำลังเชื่อมต่อ…</span>
+    <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">
+      <div class="conn-pill" id="connPill" data-state="connecting">
+        <span class="conn-dot"></span>
+        <span id="connLabel">กำลังเชื่อมต่อ…</span>
+      </div>
+      <div class="nav-links">
+        <a href="/">Dashboard กล้อง</a>
+        {% if session.role == "admin" %}
+        <a href="/admin/users">ผู้ใช้งานระบบ</a>
+        {% endif %}
+        <span class="nav-user">👤 {{ session.username }}</span>
+        <a href="/logout">ออกจากระบบ</a>
+      </div>
     </div>
   </div>
 </header>

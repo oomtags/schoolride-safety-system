@@ -18,7 +18,12 @@ MQTT_TOPIC_TRIGGER = "eaip-kls-project-dek-d/trigger01"
 MQTT_TOPIC_CONFIRM = "eaip-kls-project-dek-d/confirm01"
 MQTT_TOPIC_GPS = "eaip-kls-project-dek-d/gps01"
 
-# ===== รหัสผ่านขั้นต่ำก่อนเปิดหน้าเว็บให้คนนอกดู (HTTP Basic Auth) =====
-# เปลี่ยนก่อนเปิดให้คนนอกเข้าถึงจริงเสมอ! ไม่งั้นใครก็เดารหัสนี้ได้จากไฟล์ตัวอย่างที่ commit ไว้
-DASHBOARD_USERNAME = "admin"
-DASHBOARD_PASSWORD = "เปลี่ยนรหัสผ่านนี้ก่อนใช้งานจริง"
+# ===== ระบบ Login (ฐานข้อมูล users.db) =====
+# ใช้เซ็น session cookie ของ Flask — ต้องเปลี่ยนเป็นค่าสุ่มของตัวเองก่อนใช้งานจริงเสมอ
+# สร้างค่าใหม่ได้ด้วย: python -c "import secrets; print(secrets.token_hex(32))"
+SECRET_KEY = "ใส่ค่าสุ่มยาวๆ ของคุณเองที่นี่"
+
+# บัญชี admin เริ่มต้น (สร้างอัตโนมัติในฐานข้อมูลตอนรันครั้งแรกถ้ายังไม่มี)
+# เปลี่ยนรหัสผ่านนี้ก่อนใช้งานจริงเสมอ!
+ADMIN_USERNAME = "admin"
+ADMIN_PASSWORD = "เปลี่ยนรหัสผ่านนี้ก่อนใช้งานจริง"

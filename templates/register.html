@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<title>สมัครสมาชิก — SchoolRide Intelligent Safety System</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #0b1220;
+    --panel: #121b2e;
+    --panel-border: #223252;
+    --accent: #3b82f6;
+    --accent-2: #22d3ee;
+    --text: #e6edf7;
+    --muted: #8ea0c0;
+    --ok: #22c55e;
+    --danger: #ef4444;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: radial-gradient(circle at 20% 0%, #16213d 0%, var(--bg) 55%);
+    color: var(--text);
+    font-family: "Segoe UI", "Sarabun", sans-serif;
+    padding: 20px;
+  }
+  .auth-card {
+    width: 100%;
+    max-width: 380px;
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    border-radius: 18px;
+    padding: 32px 28px;
+    box-shadow: 0 20px 50px -20px rgba(0,0,0,0.6);
+  }
+  .brand { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-bottom: 26px; text-align: center; }
+  .brand .logo {
+    width: 56px; height: 56px; border-radius: 16px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    display: flex; align-items: center; justify-content: center; font-size: 28px;
+  }
+  .brand h1 { font-size: 17px; margin: 0; }
+  .brand p { margin: 2px 0 0; font-size: 12px; color: var(--muted); }
+
+  label { display: block; font-size: 13px; color: var(--muted); margin: 16px 0 6px; }
+  input[type="text"], input[type="password"] {
+    width: 100%; padding: 11px 14px; border-radius: 10px;
+    border: 1px solid var(--panel-border); background: #0f1830; color: var(--text);
+    font-size: 14px; font-family: inherit;
+  }
+  input:focus { outline: none; border-color: var(--accent); }
+
+  .hint { font-size: 11.5px; color: var(--muted); margin-top: 4px; }
+
+  button {
+    width: 100%; margin-top: 22px; padding: 12px;
+    border: none; border-radius: 10px; cursor: pointer;
+    background: linear-gradient(135deg, var(--accent), var(--accent-2));
+    color: #04111f; font-weight: 700; font-size: 14.5px;
+  }
+  button:hover { filter: brightness(1.08); }
+
+  .error-box {
+    margin-top: 16px; padding: 10px 14px; border-radius: 10px;
+    background: rgba(239,68,68,.14); border: 1px solid var(--danger); color: #fecaca;
+    font-size: 13px;
+  }
+  .switch-link { margin-top: 20px; text-align: center; font-size: 13px; color: var(--muted); }
+  .switch-link a { color: var(--accent-2); text-decoration: none; font-weight: 600; }
+  .switch-link a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+  <div class="auth-card">
+    <div class="brand">
+      <div class="logo">🚌</div>
+      <h1>สมัครสมาชิก</h1>
+      <p>SchoolRide Intelligent Safety System</p>
+    </div>
+
+    {% if error %}
+    <div class="error-box">{{ error }}</div>
+    {% endif %}
+
+    <form method="post">
+      <label for="username">ชื่อผู้ใช้</label>
+      <input type="text" id="username" name="username" value="{{ request.form.username or '' }}" required autofocus>
+
+      <label for="password">รหัสผ่าน</label>
+      <input type="password" id="password" name="password" required>
+      <div class="hint">อย่างน้อย 6 ตัวอักษร</div>
+
+      <label for="confirm">ยืนยันรหัสผ่าน</label>
+      <input type="password" id="confirm" name="confirm" required>
+
+      <button type="submit">สมัครสมาชิก</button>
+    </form>
+
+    <div class="switch-link">มีบัญชีอยู่แล้ว? <a href="{{ url_for('login') }}">เข้าสู่ระบบ</a></div>
+  </div>
+</body>
+</html>

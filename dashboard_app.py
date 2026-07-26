@@ -25,9 +25,9 @@ SchoolRide Intelligent Safety System — Web Dashboard
     3. เปิดเบราว์เซอร์ไปที่ http://localhost:5000
 """
 
-import hmac
 import os
 import re
+import sqlite3
 import subprocess
 import threading
 import time
@@ -39,7 +39,18 @@ import cv2
 import paho.mqtt.client as mqtt
 import requests
 import win32gui
-from flask import Flask, Response, jsonify, render_template, request, send_from_directory
+from flask import (
+    Flask,
+    Response,
+    jsonify,
+    redirect,
+    render_template,
+    request,
+    send_from_directory,
+    session,
+    url_for,
+)
+from werkzeug.security import check_password_hash, generate_password_hash
 
 import config
 from multi_camera_ai_v2 import (
@@ -80,27 +91,70 @@ TH_MONTHS = [
 ]
 
 app = Flask(__name__)
+app.secret_key = config.SECRET_KEY
+
+DB_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "users.db")
 
 
-# ===== ป้องกันขั้นต่ำก่อนเปิดให้คนนอกดู (HTTP Basic Auth) =====
-# หน้านี้โชว์วิดีโอสดในรถ + ตำแหน่ง GPS ของเด็กนักเรียน ห้ามเปิดโล่งให้ใครก็เข้าถึงได้
-def _check_auth(username, password):
-    return (
-        hmac.compare_digest(username, config.DASHBOARD_USERNAME)
-        and hmac.compare_digest(password, config.DASHBOARD_PASSWORD)
+# ============================================================
+# ฐานข้อมูลผู้ใช้ (SQLite) — สมัครสมาชิก + login แยกสิทธิ์ user/admin
+# ============================================================
+
+def get_db():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def init_db():
+    conn = get_db()
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            role TEXT NOT NULL DEFAULT 'user',
+            created_at TEXT NOT NULL
+        )
+        """
     )
+    conn.commit()
+
+    # สร้างบัญชี admin เริ่มต้นให้อัตโนมัติถ้ายังไม่มี (ตั้งค่าได้ที่ config.py)
+    existing = conn.execute(
+        "SELECT id FROM users WHERE username = ?", (config.ADMIN_USERNAME,)
+    ).fetchone()
+    if existing is None:
+        conn.execute(
+            "INSERT INTO users (username, password_hash, role, created_at) VALUES (?, ?, 'admin', ?)",
+            (
+                config.ADMIN_USERNAME,
+                generate_password_hash(config.ADMIN_PASSWORD),
+                datetime.now(TH_TZ).isoformat(),
+            ),
+        )
+        conn.commit()
+        print(f"[DB] สร้างบัญชี admin เริ่มต้น: {config.ADMIN_USERNAME}")
+    conn.close()
 
 
-def requires_auth(view_func):
+def login_required(view_func):
     @wraps(view_func)
     def wrapped(*args, **kwargs):
-        auth = request.authorization
-        if not auth or not _check_auth(auth.username or "", auth.password or ""):
-            return Response(
-                "ต้องใส่ชื่อผู้ใช้/รหัสผ่านก่อนถึงจะดูข้อมูลนี้ได้",
-                401,
-                {"WWW-Authenticate": 'Basic realm="SchoolRide Dashboard"'},
-            )
+        if not session.get("user_id"):
+            return redirect(url_for("login", next=request.path))
+        return view_func(*args, **kwargs)
+    return wrapped
+
+
+def admin_required(view_func):
+    @wraps(view_func)
+    def wrapped(*args, **kwargs):
+        if not session.get("user_id"):
+            return redirect(url_for("login", next=request.path))
+        if session.get("role") != "admin":
+            return "หน้านี้สำหรับผู้ดูแลระบบเท่านั้น", 403
         return view_func(*args, **kwargs)
     return wrapped
 
@@ -439,7 +493,7 @@ def mjpeg_generator(cam_name):
 
 
 @app.route("/video_feed/<cam_name>")
-@requires_auth
+@login_required
 def video_feed(cam_name):
     return Response(
         mjpeg_generator(cam_name),
@@ -449,14 +503,14 @@ def video_feed(cam_name):
 
 @app.route("/snapshot/<path:filename>")
 def snapshot(filename):
-    # หมายเหตุ: จุดนี้เปิดไว้ "ไม่มี" @requires_auth ตั้งใจ — เซิร์ฟเวอร์ของ LINE ต้องดึงรูปนี้เอง
+    # หมายเหตุ: จุดนี้เปิดไว้ "ไม่มี" @login_required ตั้งใจ — เซิร์ฟเวอร์ของ LINE ต้องดึงรูปนี้เอง
     # ตอนส่ง originalContentUrl (ดู send_line_alert) โดยไม่มี credential ใดๆ ถ้าใส่ auth ตรงนี้
     # LINE จะโหลดรูปไม่ได้เลย เนื้อหาเสี่ยงต่ำเพราะเป็นแค่ snapshot ล่าสุด (ถูกเขียนทับทุกครั้งที่มีเหตุการณ์ใหม่)
     return send_from_directory(SNAPSHOT_DIR, filename)
 
 
 @app.route("/api/status")
-@requires_auth
+@login_required
 def api_status():
     with state_lock:
         payload = {
@@ -474,7 +528,7 @@ def api_status():
 
 
 @app.route("/")
-@requires_auth
+@login_required
 def index():
     with state_lock:
         cam_names = list(camera_state.keys())
@@ -482,7 +536,7 @@ def index():
 
 
 @app.route("/monitor")
-@requires_auth
+@login_required
 def monitor():
     # หน้า SchoolRide Monitor (ธีมเดิมของ project_dek_d000166/dashboard.html) — served
     # same-origin จากเซิร์ฟเวอร์นี้เอง เลยดึงวิดีโอ/จำนวนคนผ่าน path สัมพัทธ์ได้ตรงๆ
@@ -490,7 +544,90 @@ def monitor():
     return render_template("monitor.html")
 
 
+# ============================================================
+# Login / สมัครสมาชิก / admin panel
+# ============================================================
+
+@app.route("/login", methods=["GET", "POST"])
+def login():
+    if session.get("user_id"):
+        return redirect(url_for("index"))
+
+    error = None
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "")
+
+        conn = get_db()
+        row = conn.execute("SELECT * FROM users WHERE username = ?", (username,)).fetchone()
+        conn.close()
+
+        if row and check_password_hash(row["password_hash"], password):
+            session["user_id"] = row["id"]
+            session["username"] = row["username"]
+            session["role"] = row["role"]
+            next_url = request.args.get("next") or url_for("index")
+            return redirect(next_url)
+
+        error = "ชื่อผู้ใช้หรือรหัสผ่านไม่ถูกต้อง"
+
+    return render_template("login.html", error=error, registered=request.args.get("registered"))
+
+
+@app.route("/register", methods=["GET", "POST"])
+def register():
+    if session.get("user_id"):
+        return redirect(url_for("index"))
+
+    error = None
+    if request.method == "POST":
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "")
+        confirm = request.form.get("confirm", "")
+
+        if not username or not password:
+            error = "กรุณากรอกชื่อผู้ใช้และรหัสผ่านให้ครบ"
+        elif len(password) < 6:
+            error = "รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร"
+        elif password != confirm:
+            error = "รหัสผ่านและยืนยันรหัสผ่านไม่ตรงกัน"
+        else:
+            conn = get_db()
+            existing = conn.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()
+            if existing:
+                error = "ชื่อผู้ใช้นี้มีคนใช้แล้ว กรุณาเลือกชื่ออื่น"
+            else:
+                conn.execute(
+                    "INSERT INTO users (username, password_hash, role, created_at) VALUES (?, ?, 'user', ?)",
+                    (username, generate_password_hash(password), datetime.now(TH_TZ).isoformat()),
+                )
+                conn.commit()
+            conn.close()
+            if not error:
+                return redirect(url_for("login", registered="1"))
+
+    return render_template("register.html", error=error)
+
+
+@app.route("/logout")
+def logout():
+    session.clear()
+    return redirect(url_for("login"))
+
+
+@app.route("/admin/users")
+@admin_required
+def admin_users():
+    conn = get_db()
+    users = conn.execute(
+        "SELECT id, username, role, created_at FROM users ORDER BY created_at DESC"
+    ).fetchall()
+    conn.close()
+    return render_template("admin_users.html", users=users)
+
+
 if __name__ == "__main__":
+    init_db()
     start_mqtt()
     start_cloudflare_tunnel()
 
