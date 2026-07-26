@@ -1,5 +1,7 @@
 <title>SchoolRide Monitor</title>
 <script src="https://unpkg.com/mqtt/dist/mqtt.min.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
   :root {
     --bg: #eef0ea;
@@ -256,6 +258,15 @@
   }
   .gps-link:hover { background: color-mix(in srgb, var(--accent-2) 20%, var(--panel-2)); }
 
+  .gps-map-panel { margin-top: 22px; }
+  .gps-map-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  #carMap {
+    height: 260px; border-radius: 14px; overflow: hidden; margin-top: 14px;
+    border: 1px solid var(--line); background: var(--bg-2);
+  }
+  #carMap .leaflet-control-attribution { font-size: 9.5px; }
+  .car-map-icon { filter: drop-shadow(0 2px 3px rgba(0,0,0,0.35)); }
+
   .footnote { margin-top: 22px; font-size: 12px; color: var(--ink-faint); line-height: 1.6; text-align: center; }
   .footnote code { font-family: var(--mono); background: var(--panel-2); padding: 1px 6px; border-radius: 4px; }
   .footnote a { color: var(--accent-2); }
@@ -396,14 +407,22 @@
       </div>
     </div>
 
-    <div class="panel stat-card gps-card">
-      <h2>📍 ตำแหน่ง GPS ของรถ</h2>
-      <p class="sub">gps01 — จาก ESP32 ทุก 10 วิ</p>
-      <div class="gps-coords no-fix" id="gpsCoords">ยังไม่ได้รับสัญญาณ GPS</div>
-      <a class="gps-link" id="gpsLink" href="#" target="_blank" rel="noopener" style="display:none">เปิดแผนที่ Google Maps</a>
-      <span class="stat-age" id="ageGps"></span>
-    </div>
+  </div>
 
+  <!-- ===== ตำแหน่ง GPS ของรถ — แผนที่ + ไอคอนรถล่าสุด ===== -->
+  <div class="panel gps-map-panel">
+    <div class="gps-map-row">
+      <div>
+        <h2>📍 ตำแหน่ง GPS ของรถ</h2>
+        <p class="sub">gps01 — จาก ESP32 ทุก 10 วิ</p>
+      </div>
+      <div style="text-align:right">
+        <div class="gps-coords no-fix" id="gpsCoords">ยังไม่ได้รับสัญญาณ GPS</div>
+        <a class="gps-link" id="gpsLink" href="#" target="_blank" rel="noopener" style="display:none">เปิดใน Google Maps</a>
+        <div class="stat-age" id="ageGps"></div>
+      </div>
+    </div>
+    <div id="carMap"></div>
   </div>
 
   <p class="footnote">
@@ -508,6 +527,8 @@
     el.gpsCoords.classList.remove("no-fix");
     el.gpsLink.href = "https://maps.google.com/?q=" + lat + "," + lng;
     el.gpsLink.style.display = "inline-block";
+
+    if (window.updateCarMap) window.updateCarMap(lat, lng);
   }
   function handleMessage(topic, payload) {
     switch (topic) {
@@ -667,6 +688,62 @@
     slots.forEach(loadSlot);
     pollPeopleCounts();
     setInterval(pollPeopleCounts, 1000);
+  })();
+
+  /* ========================================================
+     แผนที่ตำแหน่งรถ — ไอคอนรถมองจากด้านบน วางตามพิกัด GPS ล่าสุด
+     (Leaflet + OpenStreetMap tiles ฟรี ไม่ต้องใช้ API key)
+     ======================================================== */
+  (function () {
+    var CAR_ICON_SVG =
+      '<svg class="car-map-icon" width="30" height="50" viewBox="0 0 48 80" xmlns="http://www.w3.org/2000/svg">' +
+      '<defs>' +
+      '<filter id="carShadowBlur" x="-50%" y="-50%" width="200%" height="200%">' +
+      '<feGaussianBlur in="SourceGraphic" stdDeviation="2.2"/>' +
+      '</filter>' +
+      '<linearGradient id="windowShine" x1="0" y1="0" x2="1" y2="1">' +
+      '<stop offset="0%" stop-color="#ffffff" stop-opacity="0.28"/>' +
+      '<stop offset="60%" stop-color="#ffffff" stop-opacity="0"/>' +
+      '</linearGradient>' +
+      '</defs>' +
+      '<ellipse cx="24" cy="44" rx="16" ry="34" fill="#000000" opacity="0.28" filter="url(#carShadowBlur)"/>' +
+      '<path d="M24 2 C33 2 38 8 39 16 L40 60 C40 70 34 78 24 78 C14 78 8 70 8 60 L9 16 C10 8 15 2 24 2 Z" fill="#22C55E"/>' +
+      '<path d="M24 14 C29 14 33 18 33.5 24 L34 46 C34 54 30 58 24 58 C18 58 14 54 14 46 L14.5 24 C15 18 19 14 24 14 Z" fill="#16a34a" opacity="0.55"/>' +
+      '<rect x="15" y="16" width="18" height="9" rx="4" fill="#0f172a"/>' +
+      '<rect x="15" y="16" width="18" height="9" rx="4" fill="url(#windowShine)"/>' +
+      '<rect x="15" y="46" width="18" height="8" rx="4" fill="#0f172a"/>' +
+      '<rect x="15" y="46" width="18" height="8" rx="4" fill="url(#windowShine)"/>' +
+      '<rect x="9" y="4" width="6" height="4" rx="2" fill="#ffffff"/>' +
+      '<rect x="33" y="4" width="6" height="4" rx="2" fill="#ffffff"/>' +
+      '<rect x="9" y="70" width="6" height="4" rx="2" fill="#ef4444"/>' +
+      '<rect x="33" y="70" width="6" height="4" rx="2" fill="#ef4444"/>' +
+      '</svg>';
+
+    var carIcon = L.divIcon({
+      html: CAR_ICON_SVG,
+      className: "", // กัน Leaflet ใส่กรอบ/พื้นหลังขาวมาให้เอง
+      iconSize: [30, 50],
+      iconAnchor: [15, 25]
+    });
+
+    var map = null;
+    var marker = null;
+
+    window.updateCarMap = function (lat, lng) {
+      if (typeof L === "undefined") return; // โหลดไลบรารี Leaflet ไม่สำเร็จ (เช่น ออฟไลน์)
+
+      if (!map) {
+        map = L.map("carMap", { zoomControl: true, attributionControl: true }).setView([lat, lng], 16);
+        L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+          maxZoom: 19,
+          attribution: "© OpenStreetMap"
+        }).addTo(map);
+        marker = L.marker([lat, lng], { icon: carIcon }).addTo(map);
+      } else {
+        marker.setLatLng([lat, lng]);
+        map.panTo([lat, lng]);
+      }
+    };
   })();
 })();
 </script>
