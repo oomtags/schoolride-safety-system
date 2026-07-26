@@ -432,6 +432,14 @@ def index():
     return render_template("dashboard.html", cam_names=cam_names, cam_display=CAM_DISPLAY_NAMES)
 
 
+@app.route("/monitor")
+def monitor():
+    # หน้า SchoolRide Monitor (ธีมเดิมของ project_dek_d000166/dashboard.html) — served
+    # same-origin จากเซิร์ฟเวอร์นี้เอง เลยดึงวิดีโอ/จำนวนคนผ่าน path สัมพัทธ์ได้ตรงๆ
+    # ไม่ต้องกรอกที่อยู่ dashboard เองแบบตอนเปิดเป็นไฟล์ file:// อีกต่อไป
+    return render_template("monitor.html")
+
+
 if __name__ == "__main__":
     start_mqtt()
     start_cloudflare_tunnel()
