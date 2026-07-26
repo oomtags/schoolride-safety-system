@@ -17,3 +17,8 @@ MQTT_PORT = 1883
 MQTT_TOPIC_TRIGGER = "eaip-kls-project-dek-d/trigger01"
 MQTT_TOPIC_CONFIRM = "eaip-kls-project-dek-d/confirm01"
 MQTT_TOPIC_GPS = "eaip-kls-project-dek-d/gps01"
+
+# ===== รหัสผ่านขั้นต่ำก่อนเปิดหน้าเว็บให้คนนอกดู (HTTP Basic Auth) =====
+# เปลี่ยนก่อนเปิดให้คนนอกเข้าถึงจริงเสมอ! ไม่งั้นใครก็เดารหัสนี้ได้จากไฟล์ตัวอย่างที่ commit ไว้
+DASHBOARD_USERNAME = "admin"
+DASHBOARD_PASSWORD = "เปลี่ยนรหัสผ่านนี้ก่อนใช้งานจริง"

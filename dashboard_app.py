@@ -25,19 +25,21 @@ SchoolRide Intelligent Safety System — Web Dashboard
     3. เปิดเบราว์เซอร์ไปที่ http://localhost:5000
 """
 
+import hmac
 import os
 import re
 import subprocess
 import threading
 import time
 from datetime import datetime
+from functools import wraps
 from zoneinfo import ZoneInfo
 
 import cv2
 import paho.mqtt.client as mqtt
 import requests
 import win32gui
-from flask import Flask, Response, jsonify, render_template, send_from_directory
+from flask import Flask, Response, jsonify, render_template, request, send_from_directory
 
 import config
 from multi_camera_ai_v2 import (
@@ -78,6 +80,30 @@ TH_MONTHS = [
 ]
 
 app = Flask(__name__)
+
+
+# ===== ป้องกันขั้นต่ำก่อนเปิดให้คนนอกดู (HTTP Basic Auth) =====
+# หน้านี้โชว์วิดีโอสดในรถ + ตำแหน่ง GPS ของเด็กนักเรียน ห้ามเปิดโล่งให้ใครก็เข้าถึงได้
+def _check_auth(username, password):
+    return (
+        hmac.compare_digest(username, config.DASHBOARD_USERNAME)
+        and hmac.compare_digest(password, config.DASHBOARD_PASSWORD)
+    )
+
+
+def requires_auth(view_func):
+    @wraps(view_func)
+    def wrapped(*args, **kwargs):
+        auth = request.authorization
+        if not auth or not _check_auth(auth.username or "", auth.password or ""):
+            return Response(
+                "ต้องใส่ชื่อผู้ใช้/รหัสผ่านก่อนถึงจะดูข้อมูลนี้ได้",
+                401,
+                {"WWW-Authenticate": 'Basic realm="SchoolRide Dashboard"'},
+            )
+        return view_func(*args, **kwargs)
+    return wrapped
+
 
 state_lock = threading.Lock()
 camera_state = {}  # cam_name -> dict(jpeg, person_count, updated_at, online, first_detected_at, alert)
@@ -413,6 +439,7 @@ def mjpeg_generator(cam_name):
 
 
 @app.route("/video_feed/<cam_name>")
+@requires_auth
 def video_feed(cam_name):
     return Response(
         mjpeg_generator(cam_name),
@@ -422,10 +449,14 @@ def video_feed(cam_name):
 
 @app.route("/snapshot/<path:filename>")
 def snapshot(filename):
+    # หมายเหตุ: จุดนี้เปิดไว้ "ไม่มี" @requires_auth ตั้งใจ — เซิร์ฟเวอร์ของ LINE ต้องดึงรูปนี้เอง
+    # ตอนส่ง originalContentUrl (ดู send_line_alert) โดยไม่มี credential ใดๆ ถ้าใส่ auth ตรงนี้
+    # LINE จะโหลดรูปไม่ได้เลย เนื้อหาเสี่ยงต่ำเพราะเป็นแค่ snapshot ล่าสุด (ถูกเขียนทับทุกครั้งที่มีเหตุการณ์ใหม่)
     return send_from_directory(SNAPSHOT_DIR, filename)
 
 
 @app.route("/api/status")
+@requires_auth
 def api_status():
     with state_lock:
         payload = {
@@ -439,15 +470,11 @@ def api_status():
         }
         payload["gps"] = dict(latest_gps)
     payload["_server_time"] = thai_now()
-
-    resp = jsonify(payload)
-    # อนุญาต cross-origin เฉพาะ endpoint นี้ (ข้อมูล read-only ไม่มีอะไรลับ)
-    # เพราะ dashboard.html (ไฟล์เก่า) ถูกเปิดแบบ file:// / คนละโดเมน แล้วมา fetch endpoint นี้
-    resp.headers["Access-Control-Allow-Origin"] = "*"
-    return resp
+    return jsonify(payload)
 
 
 @app.route("/")
+@requires_auth
 def index():
     with state_lock:
         cam_names = list(camera_state.keys())
@@ -455,6 +482,7 @@ def index():
 
 
 @app.route("/monitor")
+@requires_auth
 def monitor():
     # หน้า SchoolRide Monitor (ธีมเดิมของ project_dek_d000166/dashboard.html) — served
     # same-origin จากเซิร์ฟเวอร์นี้เอง เลยดึงวิดีโอ/จำนวนคนผ่าน path สัมพัทธ์ได้ตรงๆ
