@@ -121,6 +121,14 @@ def init_db():
     )
     conn.commit()
 
+    # เพิ่มคอลัมน์ email/signature_data ให้ฐานข้อมูลเก่าที่สร้างไว้ก่อนมีฟีเจอร์นี้ (migrate แบบไม่ทำลายข้อมูลเดิม)
+    existing_cols = {row["name"] for row in conn.execute("PRAGMA table_info(users)")}
+    if "email" not in existing_cols:
+        conn.execute("ALTER TABLE users ADD COLUMN email TEXT NOT NULL DEFAULT ''")
+    if "signature_data" not in existing_cols:
+        conn.execute("ALTER TABLE users ADD COLUMN signature_data TEXT")
+    conn.commit()
+
     # สร้างบัญชี admin เริ่มต้นให้อัตโนมัติถ้ายังไม่มี (ตั้งค่าได้ที่ config.py)
     existing = conn.execute(
         "SELECT id FROM users WHERE username = ?", (config.ADMIN_USERNAME,)
@@ -582,15 +590,23 @@ def register():
     error = None
     if request.method == "POST":
         username = request.form.get("username", "").strip()
+        email = request.form.get("email", "").strip()
         password = request.form.get("password", "")
         confirm = request.form.get("confirm", "")
+        signature_data = request.form.get("signature_data", "").strip()
 
-        if not username or not password:
-            error = "กรุณากรอกชื่อผู้ใช้และรหัสผ่านให้ครบ"
+        email_domain = email.rsplit("@", 1)[-1] if "@" in email else ""
+
+        if not username or not email or not password:
+            error = "กรุณากรอกข้อมูลให้ครบทุกช่อง"
+        elif "@" not in email or "." not in email_domain:
+            error = "รูปแบบอีเมลไม่ถูกต้อง"
         elif len(password) < 6:
             error = "รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร"
         elif password != confirm:
             error = "รหัสผ่านและยืนยันรหัสผ่านไม่ตรงกัน"
+        elif not signature_data.startswith("data:image/"):
+            error = "กรุณาเซ็นชื่อในช่องลายเซ็นก่อนสมัครสมาชิก"
         else:
             conn = get_db()
             existing = conn.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()
@@ -598,8 +614,17 @@ def register():
                 error = "ชื่อผู้ใช้นี้มีคนใช้แล้ว กรุณาเลือกชื่ออื่น"
             else:
                 conn.execute(
-                    "INSERT INTO users (username, password_hash, role, created_at) VALUES (?, ?, 'user', ?)",
-                    (username, generate_password_hash(password), datetime.now(TH_TZ).isoformat()),
+                    """
+                    INSERT INTO users (username, email, password_hash, role, signature_data, created_at)
+                    VALUES (?, ?, ?, 'user', ?, ?)
+                    """,
+                    (
+                        username,
+                        email,
+                        generate_password_hash(password),
+                        signature_data,
+                        datetime.now(TH_TZ).isoformat(),
+                    ),
                 )
                 conn.commit()
             conn.close()
@@ -620,7 +645,7 @@ def logout():
 def admin_users():
     conn = get_db()
     users = conn.execute(
-        "SELECT id, username, role, created_at FROM users ORDER BY created_at DESC"
+        "SELECT id, username, email, role, signature_data, created_at FROM users ORDER BY created_at DESC"
     ).fetchall()
     conn.close()
     return render_template("admin_users.html", users=users)

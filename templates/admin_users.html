@@ -66,6 +66,12 @@
   .role-badge.user { background: rgba(59,130,246,.15); color: #93c5fd; border: 1px solid var(--accent); }
 
   .empty { padding: 30px; text-align: center; color: var(--muted); }
+
+  .sig-thumb {
+    height: 42px; max-width: 120px; background: #fff; border-radius: 6px;
+    border: 1px solid var(--panel-border); display: block; object-fit: contain;
+  }
+  .no-sig { color: var(--muted); font-size: 12px; }
 </style>
 </head>
 <body>
@@ -94,7 +100,9 @@
           <tr>
             <th>#</th>
             <th>ชื่อผู้ใช้</th>
+            <th>อีเมล</th>
             <th>สิทธิ์</th>
+            <th>ลายเซ็น</th>
             <th>สมัครเมื่อ</th>
           </tr>
         </thead>
@@ -103,7 +111,15 @@
           <tr>
             <td>{{ u.id }}</td>
             <td>{{ u.username }}</td>
+            <td>{{ u.email or "-" }}</td>
             <td><span class="role-badge {{ u.role }}">{{ "ผู้ดูแลระบบ" if u.role == "admin" else "ผู้ใช้งาน" }}</span></td>
+            <td>
+              {% if u.signature_data %}
+              <img class="sig-thumb" src="{{ u.signature_data }}" alt="ลายเซ็นของ {{ u.username }}">
+              {% else %}
+              <span class="no-sig">ไม่มีลายเซ็น</span>
+              {% endif %}
+            </td>
             <td>{{ u.created_at }}</td>
           </tr>
           {% endfor %}

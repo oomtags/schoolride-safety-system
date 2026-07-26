@@ -30,7 +30,7 @@
   }
   .auth-card {
     width: 100%;
-    max-width: 380px;
+    max-width: 440px;
     background: var(--panel);
     border: 1px solid var(--panel-border);
     border-radius: 18px;
@@ -47,7 +47,7 @@
   .brand p { margin: 2px 0 0; font-size: 12px; color: var(--muted); }
 
   label { display: block; font-size: 13px; color: var(--muted); margin: 16px 0 6px; }
-  input[type="text"], input[type="password"] {
+  input[type="text"], input[type="email"], input[type="password"] {
     width: 100%; padding: 11px 14px; border-radius: 10px;
     border: 1px solid var(--panel-border); background: #0f1830; color: var(--text);
     font-size: 14px; font-family: inherit;
@@ -55,6 +55,21 @@
   input:focus { outline: none; border-color: var(--accent); }
 
   .hint { font-size: 11.5px; color: var(--muted); margin-top: 4px; }
+
+  .sig-wrap { position: relative; }
+  #sigPad {
+    display: block; width: 100%; height: 150px; border-radius: 10px;
+    border: 1px solid var(--panel-border); background: #ffffff; cursor: crosshair; touch-action: none;
+  }
+  .sig-clear-btn {
+    position: absolute; top: 8px; right: 8px; margin: 0; width: auto;
+    padding: 5px 12px; font-size: 11.5px; font-weight: 600;
+    background: rgba(15,23,42,.75); color: #fff; border-radius: 8px;
+  }
+  .sig-clear-btn:hover { filter: brightness(1.15); background: rgba(15,23,42,.9); }
+  .sig-error {
+    font-size: 11.5px; color: #fca5a5; margin-top: 6px; display: none;
+  }
 
   button {
     width: 100%; margin-top: 22px; padding: 12px;
@@ -86,9 +101,12 @@
     <div class="error-box">{{ error }}</div>
     {% endif %}
 
-    <form method="post">
+    <form method="post" id="registerForm">
       <label for="username">ชื่อผู้ใช้</label>
       <input type="text" id="username" name="username" value="{{ request.form.username or '' }}" required autofocus>
+
+      <label for="email">อีเมล (Gmail)</label>
+      <input type="email" id="email" name="email" value="{{ request.form.email or '' }}" placeholder="you@gmail.com" required>
 
       <label for="password">รหัสผ่าน</label>
       <input type="password" id="password" name="password" required>
@@ -97,10 +115,89 @@
       <label for="confirm">ยืนยันรหัสผ่าน</label>
       <input type="password" id="confirm" name="confirm" required>
 
+      <label for="sigPad">ลายเซ็น</label>
+      <div class="sig-wrap">
+        <canvas id="sigPad" width="360" height="150"></canvas>
+        <button type="button" class="sig-clear-btn" id="sigClear">ล้างลายเซ็น</button>
+      </div>
+      <div class="hint">ใช้เมาส์หรือนิ้ว (มือถือ/แท็บเล็ต) เซ็นชื่อในกรอบสีขาวด้านบน</div>
+      <div class="sig-error" id="sigError">กรุณาเซ็นชื่อก่อนสมัครสมาชิก</div>
+      <input type="hidden" id="signature_data" name="signature_data">
+
       <button type="submit">สมัครสมาชิก</button>
     </form>
 
     <div class="switch-link">มีบัญชีอยู่แล้ว? <a href="{{ url_for('login') }}">เข้าสู่ระบบ</a></div>
   </div>
+
+<script>
+(function () {
+  "use strict";
+  var canvas = document.getElementById("sigPad");
+  var ctx = canvas.getContext("2d");
+  var hasDrawn = false;
+  var drawing = false;
+  var lastX = 0, lastY = 0;
+
+  function clearCanvas() {
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    hasDrawn = false;
+  }
+  clearCanvas();
+  ctx.strokeStyle = "#111827";
+  ctx.lineWidth = 2.2;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+
+  function getPos(e) {
+    var rect = canvas.getBoundingClientRect();
+    var t = e.touches && e.touches.length ? e.touches[0] : e;
+    return {
+      x: (t.clientX - rect.left) * (canvas.width / rect.width),
+      y: (t.clientY - rect.top) * (canvas.height / rect.height)
+    };
+  }
+  function start(e) {
+    e.preventDefault();
+    drawing = true;
+    hasDrawn = true;
+    var p = getPos(e);
+    lastX = p.x; lastY = p.y;
+  }
+  function move(e) {
+    if (!drawing) return;
+    e.preventDefault();
+    var p = getPos(e);
+    ctx.beginPath();
+    ctx.moveTo(lastX, lastY);
+    ctx.lineTo(p.x, p.y);
+    ctx.stroke();
+    lastX = p.x; lastY = p.y;
+  }
+  function end() { drawing = false; }
+
+  canvas.addEventListener("mousedown", start);
+  window.addEventListener("mousemove", move);
+  window.addEventListener("mouseup", end);
+  canvas.addEventListener("touchstart", start, { passive: false });
+  canvas.addEventListener("touchmove", move, { passive: false });
+  canvas.addEventListener("touchend", end);
+
+  document.getElementById("sigClear").addEventListener("click", clearCanvas);
+
+  document.getElementById("registerForm").addEventListener("submit", function (e) {
+    var errEl = document.getElementById("sigError");
+    if (!hasDrawn) {
+      e.preventDefault();
+      errEl.style.display = "block";
+      canvas.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+    errEl.style.display = "none";
+    document.getElementById("signature_data").value = canvas.toDataURL("image/png");
+  });
+})();
+</script>
 </body>
 </html>
