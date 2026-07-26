@@ -267,6 +267,8 @@ def send_line_alert(cam_name, person_count):
 # ============================================================
 
 def worker():
+    global armed
+
     from ultralytics import YOLO
 
     cam_config = ensure_config()
