@@ -415,7 +415,12 @@ def api_status():
         }
         payload["gps"] = dict(latest_gps)
     payload["_server_time"] = thai_now()
-    return jsonify(payload)
+
+    resp = jsonify(payload)
+    # อนุญาต cross-origin เฉพาะ endpoint นี้ (ข้อมูล read-only ไม่มีอะไรลับ)
+    # เพราะ dashboard.html (ไฟล์เก่า) ถูกเปิดแบบ file:// / คนละโดเมน แล้วมา fetch endpoint นี้
+    resp.headers["Access-Control-Allow-Origin"] = "*"
+    return resp
 
 
 @app.route("/")
