@@ -4,3 +4,12 @@ __pycache__/
 # ไฟล์โมเดล YOLO ขนาดใหญ่ - ultralytics จะดาวน์โหลดให้อัตโนมัติถ้าไม่มีไฟล์นี้
 yolov10s.pt
 *.pt
+
+# ค่าตั้งค่าจริง (มี LINE token) - ห้าม commit ใช้ config.example.py เป็นต้นแบบแทน
+config.py
+
+# สแนปช็อตเหตุการณ์ที่กล้องยืนยันพบคน (รูปจริง ไม่ต้องเก็บใน git)
+snapshots/
+
+# cloudflared binary (ดาวน์โหลดจาก github release โดยตรง ไม่ผ่านตัวติดตั้ง)
+cloudflared.exe

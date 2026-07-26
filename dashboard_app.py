@@ -6,24 +6,38 @@ SchoolRide Intelligent Safety System — Web Dashboard
 ดึงภาพจากกล้องเดียวกับ multi_camera_ai_v2.py (จับหน้าต่าง BlueStacks + ตรวจจับคนด้วย YOLO)
 แล้วสตรีมออกเป็นหน้าเว็บ Dashboard สวยๆ ดูผ่าน browser ได้ (เปิดจากเครื่องอื่นใน LAN เดียวกันก็ได้)
 
+การเชื่อมต่อกับ ESP32 (บนรถ):
+    ESP32 ตรวจจับว่ารถหยุดนิ่งครบ 1.5 นาที (จาก GPS speed) แล้ว publish MQTT "TRIGGER"
+    มาที่นี่ (ผ่าน broker rail.kls.ac.th ตัวเดียวกับที่ ESP32 ใช้อยู่แล้ว) — โปรแกรมนี้จะเริ่ม
+    สะสมเวลาที่เจอคนต่อกล้อง (หยุด/รอไว้ถ้ากระพริบ ไม่รีเซ็ตเป็นศูนย์) พอกล้องไหนสะสมครบ 3 วิ
+    ถือว่ายืนยันพบคน -> publish "CONFIRM" กลับไปหา ESP32 (เพื่อเปิด relay/buzzer) พร้อมส่งรูป+
+    ข้อความ+พิกัด GPS เข้ากลุ่ม LINE เอง (ผ่าน Cloudflare Tunnel เพื่อให้ LINE ดึงรูปจาก URL
+    สาธารณะได้ แม้เครื่องนี้จะไม่มี public IP)
+
 วิธีติดตั้งเพิ่ม (นอกจากของ multi_camera_ai_v2.py):
-    pip install flask
+    pip install flask paho-mqtt requests
 
 วิธีใช้:
-    python dashboard_app.py
-    แล้วเปิดเบราว์เซอร์ไปที่ http://localhost:5000
+    1. คัดลอก config.example.py เป็น config.py แล้วใส่ค่า LINE token ของจริง
+    2. python dashboard_app.py
+    3. เปิดเบราว์เซอร์ไปที่ http://localhost:5000
 """
 
+import os
+import re
+import subprocess
 import threading
 import time
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import cv2
-from flask import Flask, Response, jsonify, render_template
-
+import paho.mqtt.client as mqtt
+import requests
 import win32gui
+from flask import Flask, Response, jsonify, render_template, send_from_directory
 
+import config
 from multi_camera_ai_v2 import (
     capture_window,
     crop_top_bottom,
@@ -44,8 +58,16 @@ CAM_DISPLAY_NAMES = {
     "cam3": "กล้องแถวท้าย ของรถ",
 }
 
-# ถ้าตรวจพบคนต่อเนื่องเกินกี่วินาที ถึงจะขึ้น "แจ้งเตือน" (กันการตรวจจับกระพริบเดี๋ยวเจอเดี๋ยวไม่เจอ)
+# ถ้าตรวจพบคนต่อเนื่องเกินกี่วินาที ถึงจะขึ้น badge "แจ้งเตือน" บนหน้าเว็บ (แค่ตัวโชว์ผล ไม่เกี่ยวกับ ESP32)
 ALERT_AFTER_SECONDS = 8
+
+# ===== ค่าคุมการยืนยัน "พบคน" ตอนกล้องถูก ESP32 สั่งให้ตรวจสอบ (armed) =====
+ARMED_CONFIRM_SECONDS = 3.0   # กล้องไหนสะสมเวลาที่เจอคนครบเท่านี้ ถือว่ายืนยัน
+ARMED_WINDOW_SECONDS = 45.0   # ถ้าเกินเวลานี้แล้วไม่มีกล้องไหนยืนยันได้ ให้ตอบ NOPERSON กลับไป
+                              # (สั้นกว่า timeout fail-safe ฝั่ง ESP32 ที่ ~55 วิ เพื่อให้ตอบทันก่อน)
+
+SNAPSHOT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "snapshots")
+CLOUDFLARED_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "cloudflared.exe")
 
 TH_TZ = ZoneInfo("Asia/Bangkok")
 TH_MONTHS = [
@@ -57,6 +79,16 @@ app = Flask(__name__)
 
 state_lock = threading.Lock()
 camera_state = {}  # cam_name -> dict(jpeg, person_count, updated_at, online, first_detected_at, alert)
+latest_gps = {"lat": None, "lng": None, "updated_at": 0.0}
+
+# ===== สถานะ "armed" (กำลังรอกล้องยืนยันตามคำสั่ง TRIGGER จาก ESP32) =====
+armed_lock = threading.Lock()
+armed = False
+armed_deadline = 0.0
+armed_accum = {}  # cam_name -> วินาทีสะสมที่เจอคน ระหว่างช่วง armed นี้
+
+mqtt_client = None
+public_base_url = None  # ตั้งค่าเมื่อ Cloudflare Tunnel รายงาน URL สาธารณะกลับมา
 
 
 def thai_now():
@@ -68,14 +100,180 @@ def thai_now():
     }
 
 
+# ============================================================
+# MQTT: รับ TRIGGER/GPS จาก ESP32, ส่ง CONFIRM/NOPERSON กลับไป
+# ============================================================
+
+def _on_mqtt_connect(client, userdata, flags, rc):
+    if rc == 0:
+        print(f"[MQTT] เชื่อมต่อ {config.MQTT_BROKER} สำเร็จ")
+        client.subscribe(config.MQTT_TOPIC_TRIGGER)
+        client.subscribe(config.MQTT_TOPIC_GPS)
+    else:
+        print(f"[MQTT] เชื่อมต่อไม่สำเร็จ rc={rc}")
+
+
+def _on_mqtt_message(client, userdata, msg):
+    payload = msg.payload.decode("utf-8", errors="ignore").strip()
+
+    if msg.topic == config.MQTT_TOPIC_TRIGGER:
+        arm_camera_check()
+    elif msg.topic == config.MQTT_TOPIC_GPS:
+        _update_gps(payload)
+
+
+def _update_gps(payload):
+    try:
+        lat_str, lng_str = payload.split(",")
+        with state_lock:
+            latest_gps["lat"] = float(lat_str)
+            latest_gps["lng"] = float(lng_str)
+            latest_gps["updated_at"] = time.time()
+    except ValueError:
+        print(f"[MQTT] พิกัด GPS รูปแบบไม่ถูกต้อง: {payload!r}")
+
+
+def arm_camera_check():
+    """ESP32 สั่งมาว่ารถหยุดนิ่งครบ 90 วิแล้ว -> เริ่มสะสมเวลาที่เจอคนต่อกล้องใหม่"""
+    global armed, armed_deadline
+    with armed_lock:
+        was_armed = armed
+        armed = True
+        armed_deadline = time.time() + ARMED_WINDOW_SECONDS
+        for cam_name in camera_state:
+            armed_accum[cam_name] = 0.0
+    if not was_armed:
+        print("[ARM] ได้รับ TRIGGER จาก ESP32 -> เริ่มตรวจสอบด้วยกล้อง (สะสมครบ 3 วิ ต่อกล้อง = ยืนยัน)")
+
+
+def publish_confirm(result):
+    if mqtt_client is not None:
+        mqtt_client.publish(config.MQTT_TOPIC_CONFIRM, result)
+    print(f"[MQTT] ส่งผลกลับ ESP32: {result}")
+
+
+def start_mqtt():
+    global mqtt_client
+    client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1, client_id="schoolride-dashboard")
+    client.on_connect = _on_mqtt_connect
+    client.on_message = _on_mqtt_message
+    try:
+        client.connect(config.MQTT_BROKER, config.MQTT_PORT, keepalive=30)
+    except Exception as e:
+        print(f"[MQTT] เชื่อมต่อ broker ไม่สำเร็จตอนเริ่มโปรแกรม: {e} (จะลองใหม่อัตโนมัติ)")
+    client.loop_start()
+    mqtt_client = client
+    return client
+
+
+# ============================================================
+# Cloudflare Tunnel: เปิด URL สาธารณะชั่วคราวสำหรับให้ LINE ดึงรูปสแนปช็อต
+# ============================================================
+
+def start_cloudflare_tunnel():
+    global public_base_url
+
+    if not os.path.exists(CLOUDFLARED_PATH):
+        print("[Tunnel] ไม่พบ cloudflared.exe ในโฟลเดอร์โปรเจกต์ -> จะส่งได้แค่ข้อความ LINE ไม่มีรูปแนบ")
+        return None
+
+    proc = subprocess.Popen(
+        [CLOUDFLARED_PATH, "tunnel", "--url", "http://localhost:5000"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,
+    )
+
+    url_pattern = re.compile(r"https://[a-zA-Z0-9\-]+\.trycloudflare\.com")
+
+    def _watch_output():
+        global public_base_url
+        for line in proc.stdout:
+            match = url_pattern.search(line)
+            if match and public_base_url is None:
+                public_base_url = match.group(0)
+                print(f"[Tunnel] URL สาธารณะพร้อมใช้งาน: {public_base_url}")
+
+    threading.Thread(target=_watch_output, daemon=True).start()
+    return proc
+
+
+# ============================================================
+# LINE: ส่งรูป + ข้อความ + พิกัด GPS เข้ากลุ่ม เมื่อกล้องยืนยันพบคน
+# ============================================================
+
+def save_snapshot(frame_bgr):
+    os.makedirs(SNAPSHOT_DIR, exist_ok=True)
+    path = os.path.join(SNAPSHOT_DIR, "latest.jpg")
+    cv2.imwrite(path, frame_bgr, [cv2.IMWRITE_JPEG_QUALITY, 85])
+    return path
+
+
+def build_alert_text(cam_name, person_count):
+    label = CAM_DISPLAY_NAMES.get(cam_name, cam_name)
+    lines = [
+        "⚠️ อันตราย พบเด็กตกค้างบนรถ!",
+        f"📷 กล้อง: {label} (พบ {person_count} คน)",
+        f"📞 ติดต่อ: {config.CONTACT_PHONE}",
+    ]
+
+    with state_lock:
+        lat, lng = latest_gps["lat"], latest_gps["lng"]
+
+    if lat is not None:
+        lines.append(f"📍 พิกัดตำแหน่งรถตอนนี้:\nhttps://maps.google.com/?q={lat:.6f},{lng:.6f}")
+    else:
+        lines.append("📍 พิกัดตำแหน่งรถ: (ยังไม่ได้รับสัญญาณ GPS)")
+
+    return "\n".join(lines)
+
+
+def send_line_alert(cam_name, person_count):
+    text = build_alert_text(cam_name, person_count)
+
+    messages = []
+    if public_base_url:
+        image_url = f"{public_base_url}/snapshot/latest.jpg"
+        messages.append({
+            "type": "image",
+            "originalContentUrl": image_url,
+            "previewImageUrl": image_url,
+        })
+    else:
+        print("[LINE] ยังไม่มี URL สาธารณะ (cloudflared ยังไม่พร้อม/ไม่มีไฟล์) -> ส่งแค่ข้อความ")
+
+    messages.append({"type": "text", "text": text})
+
+    try:
+        resp = requests.post(
+            "https://api.line.me/v2/bot/message/push",
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {config.LINE_TOKEN}",
+            },
+            json={"to": config.LINE_USER_ID, "messages": messages},
+            timeout=10,
+        )
+        print(f"[LINE] ส่งแจ้งเตือนแล้ว status={resp.status_code}")
+        if resp.status_code >= 300:
+            print(f"[LINE] response: {resp.text[:300]}")
+    except Exception as e:
+        print(f"[LINE] ส่งแจ้งเตือนไม่สำเร็จ: {e}")
+
+
+# ============================================================
+# กล้อง + YOLO: ตรวจจับต่อเนื่องสำหรับหน้าเว็บ + สะสมเวลา "armed" สำหรับยืนยันเหตุการณ์
+# ============================================================
+
 def worker():
     from ultralytics import YOLO
 
-    config = ensure_config()
+    cam_config = ensure_config()
     model = YOLO("yolov10s.pt")
 
     handles = {}
-    for cam_name, title in config.items():
+    for cam_name, title in cam_config.items():
         hwnd = find_window(title)
         if hwnd is None:
             print(f"⚠️  ไม่พบหน้าต่างชื่อ \"{title}\" สำหรับ {cam_name} — ข้ามกล้องนี้ไปก่อน")
@@ -97,7 +295,17 @@ def worker():
 
     print(f"เริ่มตรวจจับวัตถุจาก {len(handles)} กล้อง สำหรับ dashboard...")
 
+    last_tick = time.time()
+
     while True:
+        now_tick = time.time()
+        dt = now_tick - last_tick
+        last_tick = now_tick
+
+        confirmed_cam = None
+        confirmed_count = 0
+        confirmed_frame = None
+
         for cam_name, hwnd in handles.items():
             if not win32gui.IsWindow(hwnd):
                 with state_lock:
@@ -137,6 +345,34 @@ def worker():
                     s["first_detected_at"] = None
                     s["alert"] = False
 
+            # ===== สะสมเวลาที่เจอคน ระหว่างช่วง armed (ESP32 สั่งตรวจสอบอยู่) =====
+            # เจอคน -> บวกเวลาเพิ่ม / ไม่เจอ -> "หยุดรอ" ค้างค่าเดิมไว้ (ไม่รีเซ็ตเป็น 0)
+            with armed_lock:
+                if armed and cam_name in armed_accum:
+                    if person_count > 0:
+                        armed_accum[cam_name] += dt
+                    if confirmed_cam is None and armed_accum[cam_name] >= ARMED_CONFIRM_SECONDS:
+                        confirmed_cam = cam_name
+                        confirmed_count = person_count
+                        confirmed_frame = cropped
+
+        # ===== ตัดสินผลของช่วง armed นี้ (ยืนยันพบคน / หมดเวลาไม่พบ) =====
+        with armed_lock:
+            is_armed = armed
+            deadline = armed_deadline
+
+        if is_armed and confirmed_cam is not None:
+            with armed_lock:
+                armed = False
+            save_snapshot(confirmed_frame)
+            publish_confirm("CONFIRM")
+            send_line_alert(confirmed_cam, confirmed_count)
+        elif is_armed and time.time() >= deadline:
+            with armed_lock:
+                armed = False
+            publish_confirm("NOPERSON")
+            print("[ARM] ครบเวลาที่กำหนดแล้วไม่มีกล้องไหนยืนยันพบคน -> NOPERSON")
+
 
 def mjpeg_generator(cam_name):
     boundary = b"--frame"
@@ -160,6 +396,11 @@ def video_feed(cam_name):
     )
 
 
+@app.route("/snapshot/<path:filename>")
+def snapshot(filename):
+    return send_from_directory(SNAPSHOT_DIR, filename)
+
+
 @app.route("/api/status")
 def api_status():
     with state_lock:
@@ -172,6 +413,7 @@ def api_status():
             }
             for cam_name, s in camera_state.items()
         }
+        payload["gps"] = dict(latest_gps)
     payload["_server_time"] = thai_now()
     return jsonify(payload)
 
@@ -184,6 +426,9 @@ def index():
 
 
 if __name__ == "__main__":
+    start_mqtt()
+    start_cloudflare_tunnel()
+
     t = threading.Thread(target=worker, daemon=True)
     t.start()
     # รอให้ worker หา config/หน้าต่างกล้องก่อน จะได้มี cam_names ตอนโหลดหน้าเว็บ

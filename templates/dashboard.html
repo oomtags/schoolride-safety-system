@@ -105,6 +105,33 @@
   }
   #overview .breakdown .chip b { display: block; color: var(--text); font-size: 18px; }
 
+  #gps-panel {
+    margin: 14px 32px 0;
+    padding: 16px 22px;
+    border-radius: 14px;
+    background: var(--panel);
+    border: 1px solid var(--panel-border);
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  #gps-panel .gps-icon { font-size: 26px; line-height: 1; }
+  #gps-panel .gps-coords { font-size: 15px; font-variant-numeric: tabular-nums; }
+  #gps-panel .gps-coords.no-fix { color: var(--muted); }
+  #gps-panel .gps-age { font-size: 12px; color: var(--muted); }
+  #gps-panel a.gps-link {
+    margin-left: auto;
+    font-size: 13px;
+    color: #93c5fd;
+    text-decoration: none;
+    padding: 6px 12px;
+    border-radius: 8px;
+    border: 1px solid rgba(59,130,246,.4);
+    background: rgba(59,130,246,.1);
+  }
+  #gps-panel a.gps-link:hover { background: rgba(59,130,246,.2); }
+
   main {
     padding: 24px 32px 40px;
     display: grid;
@@ -213,6 +240,13 @@
       <div class="total-label">คนทั้งหมดบนรถ<br><b>ภาพรวมทุกกล้อง</b></div>
     </div>
     <div class="breakdown" id="breakdown"></div>
+  </div>
+
+  <div id="gps-panel">
+    <span class="gps-icon">📍</span>
+    <span class="gps-coords no-fix" id="gps-coords">ยังไม่ได้รับสัญญาณ GPS จากรถ</span>
+    <span class="gps-age" id="gps-age"></span>
+    <a class="gps-link" id="gps-link" href="#" target="_blank" rel="noopener" style="display:none">เปิดแผนที่</a>
   </div>
 
   <main id="grid"></main>
@@ -341,6 +375,30 @@ async function pollStatus() {
     });
 
     document.getElementById("alert-banner").style.display = anyAlert ? "block" : "none";
+
+    if (data.gps) {
+      const coordsEl = document.getElementById("gps-coords");
+      const ageEl = document.getElementById("gps-age");
+      const linkEl = document.getElementById("gps-link");
+
+      if (data.gps.lat !== null && data.gps.lng !== null) {
+        const lat = data.gps.lat.toFixed(6);
+        const lng = data.gps.lng.toFixed(6);
+        coordsEl.textContent = `ตำแหน่งรถ: ${lat}, ${lng}`;
+        coordsEl.classList.remove("no-fix");
+
+        const ageSec = Math.max(0, Math.round(Date.now() / 1000 - data.gps.updated_at));
+        ageEl.textContent = ageSec < 2 ? "เพิ่งอัปเดต" : `อัปเดตล่าสุด ${ageSec} วินาทีที่แล้ว`;
+
+        linkEl.href = `https://maps.google.com/?q=${lat},${lng}`;
+        linkEl.style.display = "inline-block";
+      } else {
+        coordsEl.textContent = "ยังไม่ได้รับสัญญาณ GPS จากรถ";
+        coordsEl.classList.add("no-fix");
+        ageEl.textContent = "";
+        linkEl.style.display = "none";
+      }
+    }
 
     const totalEl = document.getElementById("total-number");
     if (total !== prevTotal) {
