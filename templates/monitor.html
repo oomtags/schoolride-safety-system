@@ -181,18 +181,6 @@
   .topic-chip.good[data-active="1"] { border-color: color-mix(in srgb, var(--good) 65%, var(--line)); background: color-mix(in srgb, var(--good) 14%, var(--panel-2)); }
   .topic-chip.good[data-active="1"] .t-val { color: var(--good); }
 
-  .cams-header-row { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; }
-  .cam-overview {
-    font-family: var(--mono); font-size: 13px; font-weight: 700; white-space: nowrap;
-    padding: 7px 16px; border-radius: 999px; border: 1px solid var(--line);
-    background: var(--panel-2); color: var(--ink-dim); transition: background 0.3s, border-color 0.3s, color 0.3s;
-  }
-  .cam-overview.has-people {
-    border-color: color-mix(in srgb, var(--active) 55%, var(--line));
-    background: color-mix(in srgb, var(--active) 14%, var(--panel-2));
-    color: var(--active);
-  }
-
   .cam-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
   @media (max-width: 900px) { .cam-grid { grid-template-columns: 1fr; } }
   .cam-slot-label { font-size: 13px; font-weight: 600; color: var(--ink-dim); margin-bottom: 8px; text-align: center; }
@@ -201,6 +189,45 @@
     color: var(--ink-faint); transition: color 0.3s;
   }
   .cam-count.has-people { color: var(--active); font-weight: 700; }
+
+  /* ===== อิโมจิคนต่อกล้อง แบบมีเอฟเฟคเด้งเข้า/จางออก ===== */
+  .cam-people-icons {
+    display: flex; flex-wrap: wrap; justify-content: center; gap: 4px;
+    margin-top: 8px; min-height: 26px;
+  }
+  .person-emoji { font-size: 22px; display: inline-block; animation: personPopIn .35s ease; }
+  .person-emoji.leaving { animation: personPopOut .3s ease forwards; }
+  @keyframes personPopIn {
+    0%   { transform: scale(0) translateY(6px); opacity: 0; }
+    60%  { transform: scale(1.25); opacity: 1; }
+    100% { transform: scale(1); opacity: 1; }
+  }
+  @keyframes personPopOut {
+    0%   { transform: scale(1); opacity: 1; }
+    100% { transform: scale(0) translateY(6px); opacity: 0; }
+  }
+
+  /* ===== สรุปภาพรวม ใต้แถวกล้อง ===== */
+  .cams-overview-summary {
+    margin-top: 22px; padding: 20px 24px; border-radius: 16px;
+    background: linear-gradient(135deg, color-mix(in srgb, var(--accent-2) 12%, var(--panel-2)), var(--panel-2));
+    border: 1px solid var(--line);
+    display: flex; align-items: center; justify-content: space-between; gap: 18px; flex-wrap: wrap;
+  }
+  .overview-total-block { display: flex; align-items: center; gap: 16px; }
+  .overview-total-number {
+    font-family: var(--mono); font-size: 48px; font-weight: 800; line-height: 1;
+    font-variant-numeric: tabular-nums; color: var(--accent-2); transition: transform .15s ease;
+  }
+  .overview-total-number.bump { transform: scale(1.18); }
+  .overview-total-label { font-size: 13px; color: var(--ink-dim); }
+  .overview-total-label b { display: block; color: var(--ink); font-size: 14.5px; }
+  .overview-breakdown { display: flex; gap: 10px; flex-wrap: wrap; }
+  .overview-breakdown .chip {
+    padding: 8px 14px; border-radius: 10px; background: var(--panel);
+    border: 1px solid var(--line); font-size: 12px; color: var(--ink-dim); text-align: center; min-width: 110px;
+  }
+  .overview-breakdown .chip b { display: block; color: var(--ink); font-size: 17px; }
 
   .cam-feed {
     position: relative; border-radius: 14px; overflow: hidden; background: var(--bg-2);
@@ -256,42 +283,49 @@
 
   <!-- ===== live camera feed จาก dashboard_app.py เอง (same-origin ไม่ต้องกรอกที่อยู่แล้ว) ===== -->
   <div class="panel cams-section">
-    <div class="cams-header-row">
-      <div>
-        <h2>📷 กล้องแบบเรียลไทม์</h2>
-        <p class="sub">สตรีมสดจาก dashboard_app.py — กล้อง1 / กล้อง2 / กล้อง3 เรียงกัน</p>
-      </div>
-      <span class="cam-overview" id="camOverviewTotal">รวมทั้งหมด: -- คน</span>
-    </div>
+    <h2>📷 กล้องแบบเรียลไทม์</h2>
+    <p class="sub">สตรีมสดจาก dashboard_app.py — กล้องแถวหน้า / กล้องแถวกลางรถ / กล้องแถวท้ายรถ เรียงกัน</p>
 
     <div class="cam-grid">
       <div class="cam-slot">
-        <div class="cam-slot-label">กล้อง1</div>
+        <div class="cam-slot-label">กล้องแถวหน้า</div>
         <div class="cam-feed" data-cam="cam1">
-          <img class="cam-frame-img" alt="กล้อง1" />
+          <img class="cam-frame-img" alt="กล้องแถวหน้า" />
           <div class="cam-feed-empty">กำลังเชื่อมต่อ...</div>
           <span class="cam-feed-live"><span class="dot"></span><span class="cam-feed-age">ยังไม่มีข้อมูล</span></span>
         </div>
         <div class="cam-count" data-cam="cam1">รอข้อมูล...</div>
+        <div class="cam-people-icons" data-cam="cam1"></div>
       </div>
       <div class="cam-slot">
-        <div class="cam-slot-label">กล้อง2</div>
+        <div class="cam-slot-label">กล้องแถวกลางรถ</div>
         <div class="cam-feed" data-cam="cam2">
-          <img class="cam-frame-img" alt="กล้อง2" />
+          <img class="cam-frame-img" alt="กล้องแถวกลางรถ" />
           <div class="cam-feed-empty">กำลังเชื่อมต่อ...</div>
           <span class="cam-feed-live"><span class="dot"></span><span class="cam-feed-age">ยังไม่มีข้อมูล</span></span>
         </div>
         <div class="cam-count" data-cam="cam2">รอข้อมูล...</div>
+        <div class="cam-people-icons" data-cam="cam2"></div>
       </div>
       <div class="cam-slot">
-        <div class="cam-slot-label">กล้อง3</div>
+        <div class="cam-slot-label">กล้องแถวท้ายรถ</div>
         <div class="cam-feed" data-cam="cam3">
-          <img class="cam-frame-img" alt="กล้อง3" />
+          <img class="cam-frame-img" alt="กล้องแถวท้ายรถ" />
           <div class="cam-feed-empty">กำลังเชื่อมต่อ...</div>
           <span class="cam-feed-live"><span class="dot"></span><span class="cam-feed-age">ยังไม่มีข้อมูล</span></span>
         </div>
         <div class="cam-count" data-cam="cam3">รอข้อมูล...</div>
+        <div class="cam-people-icons" data-cam="cam3"></div>
       </div>
+    </div>
+
+    <!-- ===== สรุปภาพรวม — อยู่ใต้แถวกล้องเลย ===== -->
+    <div class="cams-overview-summary">
+      <div class="overview-total-block">
+        <div class="overview-total-number" id="camOverviewTotal">0</div>
+        <div class="overview-total-label">คนทั้งหมดบนรถ<br><b>ภาพรวมทุกกล้อง</b></div>
+      </div>
+      <div class="overview-breakdown" id="camOverviewBreakdown"></div>
     </div>
   </div>
 
@@ -528,18 +562,33 @@
      (คนละระบบกับ MQTT ด้านบน ไม่เกี่ยวกัน ใช้ path สัมพัทธ์ ไม่ต้องตั้งค่าที่อยู่เซิร์ฟเวอร์)
      ======================================================== */
   (function () {
-    var overviewEl = document.getElementById("camOverviewTotal");
+    var CAM_LABELS = { cam1: "กล้องแถวหน้า", cam2: "กล้องแถวกลางรถ", cam3: "กล้องแถวท้ายรถ" };
+    var overviewTotalEl = document.getElementById("camOverviewTotal");
+    var overviewBreakdownEl = document.getElementById("camOverviewBreakdown");
+    var prevCounts = {};
+    var prevTotal = 0;
 
     var slots = Array.prototype.map.call(document.querySelectorAll(".cam-feed"), function (feed) {
       var cam = feed.dataset.cam;
+      prevCounts[cam] = 0;
       return {
         cam: cam,
         feed: feed,
         img: feed.querySelector(".cam-frame-img"),
         empty: feed.querySelector(".cam-feed-empty"),
         live: feed.querySelector(".cam-feed-live"),
-        countEl: document.querySelector(".cam-count[data-cam=\"" + cam + "\"]")
+        countEl: document.querySelector(".cam-count[data-cam=\"" + cam + "\"]"),
+        iconsEl: document.querySelector(".cam-people-icons[data-cam=\"" + cam + "\"]")
       };
+    });
+
+    // สร้าง chip สรุปรายกล้องไว้ในแผงภาพรวม
+    slots.forEach(function (slot) {
+      var chip = document.createElement("div");
+      chip.className = "chip";
+      chip.id = "overview-chip-" + slot.cam;
+      chip.innerHTML = (CAM_LABELS[slot.cam] || slot.cam) + "<b id=\"overview-chip-count-" + slot.cam + "\">0</b>";
+      overviewBreakdownEl.appendChild(chip);
     });
 
     function loadSlot(slot) {
@@ -555,6 +604,28 @@
       slot.img.src = "/video_feed/" + slot.cam + "?_=" + Date.now();
     }
 
+    // ปรับจำนวนอิโมจิคนในกล้องนั้นๆ ให้มีเอฟเฟคเด้งเข้า/จางออกตามจำนวนที่เปลี่ยน
+    function syncPeopleIcons(container, count) {
+      var current = container.children.length;
+
+      if (count > current) {
+        for (var i = 0; i < count - current; i++) {
+          var span = document.createElement("span");
+          span.className = "person-emoji";
+          span.textContent = "🧍";
+          container.appendChild(span);
+        }
+      } else if (count < current) {
+        var toRemove = current - count;
+        for (var j = 0; j < toRemove; j++) {
+          var el = container.lastElementChild;
+          if (!el) break;
+          el.classList.add("leaving");
+          el.addEventListener("animationend", function () { this.remove(); }, { once: true });
+        }
+      }
+    }
+
     function pollPeopleCounts() {
       fetch("/api/status")
         .then(function (res) { return res.json(); })
@@ -562,19 +633,33 @@
           var total = 0;
           slots.forEach(function (slot) {
             var s = data[slot.cam];
-            if (!s) { slot.countEl.textContent = "ไม่มีข้อมูล"; slot.countEl.classList.remove("has-people"); return; }
-            if (!s.online) {
-              slot.countEl.textContent = "ไม่มีสัญญาณภาพ";
-              slot.countEl.classList.remove("has-people");
-              return;
+            var count = (s && s.online) ? (s.person_count || 0) : 0;
+
+            if (!s) { slot.countEl.textContent = "ไม่มีข้อมูล"; slot.countEl.classList.remove("has-people"); }
+            else if (!s.online) { slot.countEl.textContent = "ไม่มีสัญญาณภาพ"; slot.countEl.classList.remove("has-people"); }
+            else {
+              slot.countEl.textContent = count > 0 ? "พบ " + count + " คน" : "ไม่พบคนในรถ";
+              slot.countEl.classList.toggle("has-people", count > 0);
             }
-            var count = s.person_count || 0;
+
             total += count;
-            slot.countEl.textContent = count > 0 ? "พบ " + count + " คน" : "ไม่พบคนในรถ";
-            slot.countEl.classList.toggle("has-people", count > 0);
+
+            if (count !== prevCounts[slot.cam]) {
+              syncPeopleIcons(slot.iconsEl, count);
+              prevCounts[slot.cam] = count;
+            }
+
+            var chipCount = document.getElementById("overview-chip-count-" + slot.cam);
+            if (chipCount) chipCount.textContent = count;
           });
-          overviewEl.textContent = "รวมทั้งหมด: " + total + " คน";
-          overviewEl.classList.toggle("has-people", total > 0);
+
+          if (total !== prevTotal) {
+            overviewTotalEl.textContent = total;
+            overviewTotalEl.classList.remove("bump");
+            void overviewTotalEl.offsetWidth; // reflow เพื่อให้ animation รันซ้ำได้
+            overviewTotalEl.classList.add("bump");
+            prevTotal = total;
+          }
         })
         .catch(function () { /* เชื่อมต่อไม่ได้ตอนนี้ เดี๋ยวลองใหม่รอบหน้า (ทุก 1 วิ) เงียบไว้ */ });
     }
