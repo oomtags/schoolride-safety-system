@@ -12,7 +12,9 @@ SchoolRide Intelligent Safety System — Web Dashboard
     สะสมเวลาที่เจอคนต่อกล้อง (หยุด/รอไว้ถ้ากระพริบ ไม่รีเซ็ตเป็นศูนย์) พอกล้องไหนสะสมครบ 3 วิ
     ถือว่ายืนยันพบคน -> publish "CONFIRM" กลับไปหา ESP32 (เพื่อเปิด relay/buzzer) พร้อมส่งรูป+
     ข้อความ+พิกัด GPS เข้ากลุ่ม LINE เอง (ผ่าน Cloudflare Tunnel เพื่อให้ LINE ดึงรูปจาก URL
-    สาธารณะได้ แม้เครื่องนี้จะไม่มี public IP)
+    สาธารณะได้ แม้เครื่องนี้จะไม่มี public IP) — หลังจากนั้นจะเฝ้าดูต่อว่าคนออกจากกล้องหมดหรือยัง
+    พอไม่เห็นคนเลยสักกล้องต่อเนื่องครบ CLEAR_ABSENCE_SECONDS จะ publish "CLEAR" ให้ ESP32
+    ปิดสัญญาณเตือน (แทนที่จะรอให้รถขยับก่อนถึงจะปิดได้แบบเดิม)
 
 วิธีติดตั้งเพิ่ม (นอกจากของ multi_camera_ai_v2.py):
     pip install flask paho-mqtt requests
@@ -86,6 +88,11 @@ armed_lock = threading.Lock()
 armed = False
 armed_deadline = 0.0
 armed_accum = {}  # cam_name -> วินาทีสะสมที่เจอคน ระหว่างช่วง armed นี้
+
+# ===== สถานะหลังยืนยันพบคนแล้ว: รอจนกว่าจะไม่เห็นคนเลยสักกล้อง ถึงจะสั่งปิด alarm ที่ ESP32 =====
+CLEAR_ABSENCE_SECONDS = 2.0  # ต้องไม่พบคนต่อเนื่องกี่วิ ถึงจะถือว่า "ออกจากกล้องไปแล้ว" (กันกระพริบเดี๋ยวเจอเดี๋ยวไม่เจอ)
+awaiting_clear = False
+clear_absence_accum = 0.0
 
 mqtt_client = None
 public_base_url = None  # ตั้งค่าเมื่อ Cloudflare Tunnel รายงาน URL สาธารณะกลับมา
@@ -267,7 +274,7 @@ def send_line_alert(cam_name, person_count):
 # ============================================================
 
 def worker():
-    global armed
+    global armed, awaiting_clear, clear_absence_accum
 
     from ultralytics import YOLO
 
@@ -307,6 +314,7 @@ def worker():
         confirmed_cam = None
         confirmed_count = 0
         confirmed_frame = None
+        total_person_count = 0
 
         for cam_name, hwnd in handles.items():
             if not win32gui.IsWindow(hwnd):
@@ -324,6 +332,7 @@ def worker():
 
             results = model(frame, verbose=False, classes=[PERSON_CLASS_ID], imgsz=INFERENCE_SIZE)
             person_count = len(results[0].boxes)
+            total_person_count += person_count
             annotated = results[0].plot()
             cropped = crop_top_bottom(annotated, CROP_TOP_RATIO, CROP_BOTTOM_RATIO)
 
@@ -369,11 +378,24 @@ def worker():
             save_snapshot(confirmed_frame)
             publish_confirm("CONFIRM")
             send_line_alert(confirmed_cam, confirmed_count)
+            awaiting_clear = True
+            clear_absence_accum = 0.0
         elif is_armed and time.time() >= deadline:
             with armed_lock:
                 armed = False
             publish_confirm("NOPERSON")
             print("[ARM] ครบเวลาที่กำหนดแล้วไม่มีกล้องไหนยืนยันพบคน -> NOPERSON")
+
+        # ===== หลังยืนยันพบคนแล้ว: รอจนไม่เห็นคนเลยสักกล้องต่อเนื่อง CLEAR_ABSENCE_SECONDS -> สั่งปิด alarm =====
+        if awaiting_clear:
+            if total_person_count == 0:
+                clear_absence_accum += dt
+                if clear_absence_accum >= CLEAR_ABSENCE_SECONDS:
+                    publish_confirm("CLEAR")
+                    awaiting_clear = False
+                    print("[CLEAR] ไม่พบคนในรถทุกกล้องต่อเนื่องแล้ว -> สั่งปิดสัญญาณเตือนที่ ESP32")
+            else:
+                clear_absence_accum = 0.0  # ยังเห็นคนอยู่ -> รีเซ็ตตัวจับเวลาความไม่มีคน
 
 
 def mjpeg_generator(cam_name):

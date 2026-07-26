@@ -56,6 +56,8 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
       handleCamResult(true, false);
     } else if (msg.equalsIgnoreCase("NOPERSON")) {
       handleCamResult(false, false);
+    } else if (msg.equalsIgnoreCase("CLEAR")) {
+      handleClearSignal();
     }
     return;
   }

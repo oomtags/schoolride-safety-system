@@ -15,6 +15,7 @@ void checkCamTimeout();
 String getGpsText();
 void updateBuzzer();
 void handleCamResult(bool personConfirmed, bool failSafe);
+void handleClearSignal();
 void readBatteryVoltage();
 void publishRelayState();
 void publishCameraState();
@@ -233,18 +234,21 @@ void loop() {
     gps.encode(gpsSerial.read());
   }
 
-  float speed = gps.speed.isValid() ? gps.speed.kmph() : -1;
+  bool gpsSpeedValid = gps.speed.isValid();
+  float speed = gpsSpeedValid ? gps.speed.kmph() : -1;
 
-  // ===== ปิดสัญญาณเตือน (relay) เมื่อครบกำหนดเวลาป้องกันบอร์ดไหม้ =====
+  // ===== ปิดสัญญาณเตือน (relay+buzzer) เมื่อครบกำหนดเวลาป้องกันบอร์ดไหม้ =====
+  // (fail-safe สำรอง เผื่อกล้อง/คอมไม่ส่ง CLEAR กลับมาด้วยเหตุผลใดก็ตาม ไม่ให้ปลุกดังค้างตลอดไป)
   if (relayActive && (now - relayActivatedTime >= RELAY_ON_DURATION)) {
     digitalWrite(RELAY_PIN, LOW);
     relayActive = false;
-    Serial.println("Relay Timeout: OFF");
+    alarmActive = false;
+    Serial.println("Relay Timeout: OFF (fail-safe ปิด alarm ด้วย เผื่อไม่ได้รับ CLEAR จากกล้อง)");
   }
 
   // ===== การทำงานตามเงื่อนไขความเร็วและการรีเซ็ตระบบ =====
-  if (speed > SPEED_LIMIT) {
-    // ถ้ารถวิ่งเร็วเกิน 10 กม./ชม. ระบบจะยกเลิกการตรวจสอบ และรีเซ็ตทุกอย่างพร้อมเริ่มนับใหม่รอบหน้า
+  if (gpsSpeedValid && speed > SPEED_LIMIT) {
+    // มี GPS ยืนยันชัดเจนว่ารถกำลังวิ่งเร็วเกิน 10 กม./ชม. -> ปลอดภัยแล้ว รีเซ็ตทุกอย่างรวม alarm
     checkEnabled     = false;
     stateStartTime   = 0;
     triggeredThisCycle = false;
@@ -254,8 +258,20 @@ void loop() {
       digitalWrite(RELAY_PIN, LOW);
       relayActive = false;
     }
+  } else if (!gpsSpeedValid) {
+    // ยังไม่มีสัญญาณ GPS (เช่น เพิ่งเปิดเครื่อง ยังล็อกดาวเทียมไม่ได้) -> ไม่รู้ว่ารถหยุดจริงหรือไม่
+    // จึงยังไม่เริ่ม/นับเวลาหยุดนิ่งใหม่ แต่ "ไม่แตะ" alarmActive/relay ที่อาจกำลังทำงานอยู่จากรอบก่อนหน้า
+    // (กันไม่ให้ GPS หลุดสัญญาณชั่วคราวไปเผลอตัดสัญญาณเตือนที่ยืนยันพบคนแล้วจริงๆ)
+    checkEnabled       = false;
+    stateStartTime     = 0;
+    triggeredThisCycle = false;
+
+    if (now - lastCountdownLog >= 5000) {
+      lastCountdownLog = now;
+      Serial.println("ยังไม่มีสัญญาณ GPS (รอล็อกดาวเทียม) -> ยังไม่เริ่มนับเวลารถหยุดนิ่ง");
+    }
   } else {
-    // ถ้ารถความเร็วต่ำกว่าหรือเท่ากับ 10 กม./ชม. จะบันทึกเวลาจุดเริ่มต้น (ถ้าเพิ่งเริ่มหยุดนิ่ง)
+    // มี GPS ยืนยันว่าความเร็วต่ำกว่าหรือเท่ากับ 10 กม./ชม. จริง -> นับเวลาหยุดนิ่ง
     if (stateStartTime == 0) {
       stateStartTime = now;
     }

@@ -77,6 +77,15 @@ void handleCamResult(bool personConfirmed, bool failSafe) {
   }
 }
 
+// ===== กล้อง (คอม) แจ้งว่าไม่เห็นคนในรถแล้ว ระหว่างที่ alarm กำลังดังอยู่ -> ปิดสัญญาณเตือน =====
+// (มาจาก MQTT topic_confirm payload "CLEAR" ใน mqttCallback)
+void handleClearSignal() {
+  if (alarmActive) {
+    alarmActive = false;
+    Serial.println("กล้องแจ้งว่าไม่พบคนในรถแล้ว -> ปิดสัญญาณเตือน (relay+buzzer)");
+  }
+}
+
 String getGpsText() {
   if (gps.location.isValid()) {
     String latStr = String(gps.location.lat(), 6);
